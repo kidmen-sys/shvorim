@@ -157,6 +157,7 @@ export default function App() {
   const chainsInTab = ["הכל", ...Array.from(new Set(baseList.map((c) => c.chain)))];
 
   // ── AI Image — מנסה לחלץ הכל, מה שמוצא — ממלא, מה שלא — משאיר ─
+  // ── זיהוי תמונה בסיסי — OCR בדפדפן, ללא API, ללא תשלום ──────────
   const handleImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -166,93 +167,119 @@ export default function App() {
       const dataUrl = ev.target.result;
       setImgPreview(dataUrl);
       setAnalyzing(true);
+
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 1000,
-            messages: [{
-              role: "user",
-              content: [
-                {
-                  type: "image",
-                  source: { type: "base64", media_type: file.type || "image/jpeg", data: dataUrl.split(",")[1] }
-                },
-                {
-                  type: "text",
-                  text: `אתה מומחה לניתוח שוברים וקופונים ישראלים. בדוק את התמונה בקפידה.
-
-חלץ את המידע הבא — מה שאתה מוצא, תמלא. מה שלא — תשאיר ריק:
-
-1. מספר השובר / קוד — חפש סדרת ספרות (בדרך כלל 10-19 ספרות), ברקוד, QR, או קוד אלפאנומרי. זה השדה הכי חשוב!
-2. שם הרשת — חפש לוגו או שם מותג. אפשרויות: ${CHAIN_LIST.join(", ")}
-3. תאריך תפוגה — חפש "בתוקף עד", "תוקף", "Valid until", תאריך בפורמט כלשהו
-4. ערך / הטבה — סכום בשקלים, אחוז הנחה, או תיאור ההטבה
-
-כללים חשובים:
-- מספר השובר הוא העיקר — גם אם לא מצאת שום דבר אחר, חלץ את המספר
-- אל תמציא מידע שלא קיים בתמונה
-- אם הרשת לא ברורה — כתוב "אחר"
-- תאריך בפורמט YYYY-MM-DD בלבד
-
-החזר JSON בלבד, ללא markdown, ללא הסברים:
-{"chain":"","code":"","expiry":"","discount":""}`
-                }
-              ]
-            }]
-          }),
-        });
-
-        const data = await res.json();
-        const text = (data.content || []).map((b) => b.text || "").join("");
-
-        let parsed = {};
-        try {
-          parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-        } catch {
-          // אם ה-JSON נכשל, ננסה לחלץ ידנית
-          const codeMatch = text.match(/\d{8,}/);
-          if (codeMatch) parsed.code = codeMatch[0];
+        // טען Tesseract.js לזיהוי טקסט מהתמונה
+        if (!window.Tesseract) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.3/tesseract.min.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
         }
 
-        // מלא רק שדות שנמצאו — אל תמחק מה שכבר הוזן
+        const { data: { text } } = await window.Tesseract.recognize(dataUrl, 'heb+eng', {
+          logger: () => {},
+        });
+
+        const found = {};
+
+        // חיפוש מספר שובר — סדרת 8+ ספרות
+        const codePatterns = [
+          /(\d{12,19})/,   // ברקוד ארוך
+          /(\d{8,11})/,    // קוד בינוני
+          /([A-Z]{2,4}[-\s]?\d{6,})/i, // קוד אלפאנומרי
+        ];
+        for (const pat of codePatterns) {
+          const m = text.match(pat);
+          if (m) { found.code = m[1] || m[0]; break; }
+        }
+
+        // חיפוש תאריך
+        const datePatterns = [
+          /(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})/,  // DD/MM/YYYY
+          /(\d{4})[\/\.\-](\d{2})[\/\.\-](\d{2})/,  // YYYY-MM-DD
+          /(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{2})/,  // DD/MM/YY
+        ];
+        for (const pat of datePatterns) {
+          const m = text.match(pat);
+          if (m) {
+            // נסה לפרסר את התאריך
+            let y = m[3] || m[1], mo = m[2], d = m[1];
+            if (m[1].length === 4) { y = m[1]; mo = m[2]; d = m[3]; }
+            if (y && y.length === 2) y = '20' + y;
+            if (parseInt(y) > 2020 && parseInt(y) < 2040) {
+              found.expiry = `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+            }
+            break;
+          }
+        }
+
+        // חיפוש רשת לפי מילות מפתח
+        const chainKeywords = {
+          "רמי לוי": ["רמי", "rami", "levy", "לוי"],
+          "סופר קרפור": ["קרפור", "carrefour"],
+          "שופרסל": ["שופרסל", "shufersal"],
+          "ויקטורי": ["ויקטורי", "victory"],
+          "מגה ספורט": ["מגה", "mega", "ספורט", "sport"],
+          "מחסני להב": ["להב", "lahav", "מחסני"],
+          "BOOM": ["boom", "בום"],
+          "חבר": ["חבר", "haver"],
+          "מקדונלד'ס": ["מקדונלד", "mcdonald"],
+          "פיצה שמש": ["שמש", "shemesh"],
+          "פיצה סטורי": ["סטורי", "story"],
+          "פיצה האט": ["האט", "hut", "pizza"],
+          "דומינו'ס": ["דומינו", "domino"],
+          "יינות ביתן": ["יינות", "ביתן", "bitan"],
+        };
+        const lowerText = text.toLowerCase();
+        for (const [chain, keywords] of Object.entries(chainKeywords)) {
+          if (keywords.some(kw => lowerText.includes(kw.toLowerCase()))) {
+            found.chain = chain;
+            break;
+          }
+        }
+
+        // חיפוש סכום כסף
+        const amountMatch = text.match(/(\d+)\s*[₪₪]/);
+        if (amountMatch) found.discount = `שובר ${amountMatch[1]}₪`;
+
+        // עדכן טופס
         setForm((f) => ({
           ...f,
-          chain:    (parsed.chain    && parsed.chain !== "אחר" && parsed.chain.trim()) ? parsed.chain.trim()    : f.chain,
-          code:     parsed.code     && parsed.code.trim()     ? parsed.code.trim()     : f.code,
-          expiry:   parsed.expiry   && parsed.expiry.trim()   ? parsed.expiry.trim()   : f.expiry,
-          discount: parsed.discount && parsed.discount.trim() ? parsed.discount.trim() : f.discount,
+          chain:    found.chain    ? found.chain    : f.chain,
+          code:     found.code     ? found.code.replace(/\s/g,'') : f.code,
+          expiry:   found.expiry   ? found.expiry   : f.expiry,
+          discount: found.discount ? found.discount : f.discount,
         }));
 
-        // הודעה לפי מה שנמצא
-        const found = [];
-        if (parsed.code)     found.push("קוד שובר");
-        if (parsed.chain && parsed.chain !== "אחר") found.push("רשת");
-        if (parsed.expiry)   found.push("תוקף");
-        if (parsed.discount) found.push("הטבה");
+        const foundList = Object.keys(found).filter(k => found[k]);
+        const missingList = ['code','chain','expiry','discount'].filter(k => !found[k]);
 
-        if (found.length === 0) {
-          setAiMsg({ text: "⚠️ לא זיהיתי פרטים מהתמונה — מלא ידנית", type: "warn" });
+        if (foundList.length === 0) {
+          setAiMsg({ text: "⚠️ לא זיהיתי טקסט — ודא שהתמונה ברורה ומלא ידנית", type: "warn" });
         } else {
-          const missing = [];
-          if (!parsed.chain || parsed.chain === "אחר") missing.push("רשת");
-          if (!parsed.code)     missing.push("קוד");
-          if (missing.length > 0) {
-            setAiMsg({ text: `✨ זיהיתי: ${found.join(", ")}. השלם ידנית: ${missing.join(", ")}`, type: "warn" });
+          const labels = { code:"קוד", chain:"רשת", expiry:"תוקף", discount:"סכום" };
+          const foundStr   = foundList.map(k => labels[k]).join(", ");
+          const missingStr = missingList.map(k => labels[k]).join(", ");
+          if (missingList.length > 0) {
+            setAiMsg({ text: `✨ זיהיתי: ${foundStr}. השלם ידנית: ${missingStr}`, type: "warn" });
           } else {
-            setAiMsg({ text: `✨ זיהיתי: ${found.join(", ")} — בדוק ותקן אם צריך`, type: "ok" });
+            setAiMsg({ text: `✨ זיהיתי: ${foundStr} — בדוק ותקן אם צריך`, type: "ok" });
           }
         }
 
       } catch (err) {
-        console.error("AI error:", err);
-        setAiMsg({ text: "❌ שגיאת רשת — בדוק חיבור אינטרנט ונסה שוב", type: "err" });
+        console.error("OCR error:", err);
+        setAiMsg({ text: "⚠️ לא הצלחתי לקרוא את התמונה — מלא ידנית", type: "warn" });
       }
+
       setAnalyzing(false);
     };
     reader.readAsDataURL(file);
+  };
   };
 
   const setField     = (key, val) => setForm((f) => ({ ...f, [key]: val }));
