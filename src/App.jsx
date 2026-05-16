@@ -6,7 +6,7 @@ import {
 } from "firebase/firestore";
 
 const BRANDS = {
-  "רמי לוי":     { border: "#e8001a", balUrl: "https://ramilevydigital.mltp.co.il/" },
+  "רמי לוי":     { border: "#e8001a", balUrl: "https://ramilevydigital.mltp.co.il/?fireglass_rsn=true" },
   "סופר קרפור":  { border: "#003da5", balUrl: "https://tavplus.mltp.co.il/" },
   "שופרסל":      { border: "#00873c" },
   "ויקטורי":     { border: "#f97316" },
@@ -45,6 +45,7 @@ const brand     = (c) => BRANDS[c] || BRANDS["אחר"];
 const isSoon    = (e) => { if (!e) return false; const d = (new Date(e) - new Date()) / 86400000; return d >= 0 && d <= 7; };
 const isExpired = (e) => e && new Date(e) < new Date();
 
+// ─── Logo ─────────────────────────────────────────────────────────
 function Logo({ chain }) {
   const box = { width: 44, height: 44, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" };
   switch (chain) {
@@ -86,7 +87,6 @@ function CouponCard({ coupon: c, open, onToggle, onMarkUsed, onRestore, onEdit, 
   const lbl    = c.used ? "נוצל" : isExpired(c.expiry) ? "פג תוקף" : isSoon(c.expiry) ? "⚠️ פג בקרוב" : "פעיל";
   const bc     = brand(c.chain).border;
   const hasBal = !!brand(c.chain).balUrl;
-
   return (
     <div style={{ borderRadius: 13, background: "rgba(255,255,255,0.045)", overflow: "hidden", marginBottom: 9, border: `1px solid ${bc}33`, borderRight: `4px solid ${bc}` }}>
       <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, cursor: "pointer", userSelect: "none" }}>
@@ -112,15 +112,9 @@ function CouponCard({ coupon: c, open, onToggle, onMarkUsed, onRestore, onEdit, 
           {c.image && <img src={c.image} alt="שובר" style={{ width: "100%", maxHeight: 140, objectFit: "contain", borderRadius: 8, marginBottom: 10, background: "rgba(0,0,0,0.3)", display: "block" }} />}
           {c.used && c.usedDate && <div style={{ fontSize: 10, color: "#ab47bc", marginBottom: 8 }}>📅 נוצל בתאריך: {c.usedDate}</div>}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {hasBal && !c.used && (
-              <button onClick={onBalance} style={{ flex: 2, padding: 8, borderRadius: 9, background: "rgba(99,179,237,0.12)", border: "1px solid #63b3ed", color: "#63b3ed", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>💳 בדוק יתרה</button>
-            )}
-            {!c.used && (
-              <button onClick={onMarkUsed} style={{ flex: 2, padding: 8, borderRadius: 9, border: "none", background: "linear-gradient(135deg,#3182ce,#2563eb)", color: "#fff", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✅ סמן נוצל</button>
-            )}
-            {c.used && (
-              <button onClick={onRestore} style={{ flex: 2, padding: 8, borderRadius: 9, border: "1px solid #4caf50", background: "rgba(76,175,80,0.12)", color: "#4caf50", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>↩️ החזר לפעילים</button>
-            )}
+            {hasBal && !c.used && <button onClick={onBalance} style={{ flex: 2, padding: 8, borderRadius: 9, background: "rgba(99,179,237,0.12)", border: "1px solid #63b3ed", color: "#63b3ed", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>💳 בדוק יתרה</button>}
+            {!c.used && <button onClick={onMarkUsed} style={{ flex: 2, padding: 8, borderRadius: 9, border: "none", background: "linear-gradient(135deg,#3182ce,#2563eb)", color: "#fff", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✅ סמן נוצל</button>}
+            {c.used && <button onClick={onRestore} style={{ flex: 2, padding: 8, borderRadius: 9, border: "1px solid #4caf50", background: "rgba(76,175,80,0.12)", color: "#4caf50", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>↩️ החזר לפעילים</button>}
             <button onClick={onEdit} style={{ padding: "8px 10px", borderRadius: 9, background: "rgba(245,158,11,0.12)", border: "1px solid #f59e0b", color: "#f59e0b", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏️ ערוך</button>
             <button onClick={onDelete} style={{ padding: "8px 10px", borderRadius: 9, background: "rgba(239,68,68,0.1)", border: "1px solid #ef4444", color: "#ef4444", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>🗑️ מחק</button>
           </div>
@@ -162,7 +156,7 @@ export default function App() {
   const list     = filterChain === "הכל" ? baseList : baseList.filter((c) => c.chain === filterChain);
   const chainsInTab = ["הכל", ...Array.from(new Set(baseList.map((c) => c.chain)))];
 
-  // ── AI Image ─────────────────────────────────────────────────────
+  // ── AI Image — מנסה לחלץ הכל, מה שמוצא — ממלא, מה שלא — משאיר ─
   const handleImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -178,43 +172,83 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "claude-sonnet-4-20250514",
-            max_tokens: 800,
+            max_tokens: 1000,
             messages: [{
               role: "user",
               content: [
-                { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: dataUrl.split(",")[1] } },
-                { type: "text", text: `אתה מנתח שוברים וקופונים ישראלים. נתח את התמונה בקפידה וחלץ:
-1. שם הרשת — חפש לוגו, שם מותג, כיתוב
-2. מספר/קוד השובר — כל סדרת ספרות או אותיות+ספרות
-3. תאריך תפוגה
-4. ערך או הטבה
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: file.type || "image/jpeg", data: dataUrl.split(",")[1] }
+                },
+                {
+                  type: "text",
+                  text: `אתה מומחה לניתוח שוברים וקופונים ישראלים. בדוק את התמונה בקפידה.
 
-החזר JSON בלבד ללא markdown:
-{"chain":"בחר מ: ${CHAIN_LIST.join(", ")} — אם לא ברור כתוב אחר","code":"מספר השובר בלבד","expiry":"YYYY-MM-DD","discount":"תיאור קצר"}
+חלץ את המידע הבא — מה שאתה מוצא, תמלא. מה שלא — תשאיר ריק:
 
-חשוב: גם אם הרשת לא ברורה — חלץ את מספר השובר!` }
+1. מספר השובר / קוד — חפש סדרת ספרות (בדרך כלל 10-19 ספרות), ברקוד, QR, או קוד אלפאנומרי. זה השדה הכי חשוב!
+2. שם הרשת — חפש לוגו או שם מותג. אפשרויות: ${CHAIN_LIST.join(", ")}
+3. תאריך תפוגה — חפש "בתוקף עד", "תוקף", "Valid until", תאריך בפורמט כלשהו
+4. ערך / הטבה — סכום בשקלים, אחוז הנחה, או תיאור ההטבה
+
+כללים חשובים:
+- מספר השובר הוא העיקר — גם אם לא מצאת שום דבר אחר, חלץ את המספר
+- אל תמציא מידע שלא קיים בתמונה
+- אם הרשת לא ברורה — כתוב "אחר"
+- תאריך בפורמט YYYY-MM-DD בלבד
+
+החזר JSON בלבד, ללא markdown, ללא הסברים:
+{"chain":"","code":"","expiry":"","discount":""}`
+                }
               ]
             }]
           }),
         });
-        const data   = await res.json();
-        const text   = (data.content || []).map((b) => b.text || "").join("");
-        const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+
+        const data = await res.json();
+        const text = (data.content || []).map((b) => b.text || "").join("");
+
+        let parsed = {};
+        try {
+          parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+        } catch {
+          // אם ה-JSON נכשל, ננסה לחלץ ידנית
+          const codeMatch = text.match(/\d{8,}/);
+          if (codeMatch) parsed.code = codeMatch[0];
+        }
+
+        // מלא רק שדות שנמצאו — אל תמחק מה שכבר הוזן
         setForm((f) => ({
           ...f,
-          chain:    parsed.chain    || f.chain,
-          code:     parsed.code     || f.code,
-          expiry:   parsed.expiry   || f.expiry,
-          discount: parsed.discount || f.discount,
+          chain:    (parsed.chain    && parsed.chain !== "אחר" && parsed.chain.trim()) ? parsed.chain.trim()    : f.chain,
+          code:     parsed.code     && parsed.code.trim()     ? parsed.code.trim()     : f.code,
+          expiry:   parsed.expiry   && parsed.expiry.trim()   ? parsed.expiry.trim()   : f.expiry,
+          discount: parsed.discount && parsed.discount.trim() ? parsed.discount.trim() : f.discount,
         }));
-        const noChain = !parsed.chain || parsed.chain === "אחר";
-        const noCode  = !parsed.code;
-        if (noCode && noChain) setAiMsg({ text: "⚠️ לא זיהיתי פרטים — מלא ידנית", type: "warn" });
-        else if (noChain)      setAiMsg({ text: "✨ קוד זוהה! בחר רשת ידנית מהרשימה", type: "warn" });
-        else                   setAiMsg({ text: "✨ AI מילא את הפרטים — בדוק ותקן אם צריך", type: "ok" });
+
+        // הודעה לפי מה שנמצא
+        const found = [];
+        if (parsed.code)     found.push("קוד שובר");
+        if (parsed.chain && parsed.chain !== "אחר") found.push("רשת");
+        if (parsed.expiry)   found.push("תוקף");
+        if (parsed.discount) found.push("הטבה");
+
+        if (found.length === 0) {
+          setAiMsg({ text: "⚠️ לא זיהיתי פרטים מהתמונה — מלא ידנית", type: "warn" });
+        } else {
+          const missing = [];
+          if (!parsed.chain || parsed.chain === "אחר") missing.push("רשת");
+          if (!parsed.code)     missing.push("קוד");
+          if (missing.length > 0) {
+            setAiMsg({ text: `✨ זיהיתי: ${found.join(", ")}. השלם ידנית: ${missing.join(", ")}`, type: "warn" });
+          } else {
+            setAiMsg({ text: `✨ זיהיתי: ${found.join(", ")} — בדוק ותקן אם צריך`, type: "ok" });
+          }
+        }
+
       } catch (err) {
-        console.error(err);
-        setAiMsg({ text: "❌ שגיאה בניתוח — מלא ידנית", type: "err" });
+        console.error("AI error:", err);
+        setAiMsg({ text: "❌ שגיאת רשת — בדוק חיבור אינטרנט ונסה שוב", type: "err" });
       }
       setAnalyzing(false);
     };
@@ -229,7 +263,7 @@ export default function App() {
     }
   };
 
-  const openAdd = () => { setEditId(null); setImgPreview(null); setAiMsg(null); setForm({ chain: "", code: "", expiry: "", discount: "", addedBy: "אני" }); setShowForm(true); };
+  const openAdd  = () => { setEditId(null); setImgPreview(null); setAiMsg(null); setForm({ chain: "", code: "", expiry: "", discount: "", addedBy: "אני" }); setShowForm(true); };
   const openEdit = (c) => { setEditId(c.id); setImgPreview(c.image || null); setAiMsg(null); setForm({ chain: c.chain, code: c.code, expiry: c.expiry || "", discount: c.discount || "", addedBy: c.addedBy || "אני" }); setShowForm(true); };
   const closeForm = () => { setShowForm(false); setEditId(null); };
 
@@ -352,12 +386,18 @@ export default function App() {
           <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>
             {editId ? <>✏️ עריכת שובר <span style={{ fontSize: 11, fontWeight: 500, color: "#f59e0b", background: "rgba(245,158,11,0.1)", border: "1px solid #f59e0b44", padding: "2px 8px", borderRadius: 20 }}>עריכה</span></> : "➕ שובר חדש"}
           </div>
+
+          {/* Upload — add mode only */}
           {!editId && (
             <>
-              <div onClick={() => fileRef.current.click()} style={{ border: "2px dashed rgba(99,179,237,0.4)", borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 10, position: "relative", overflow: "hidden", minHeight: 80, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+              <div onClick={() => fileRef.current.click()} style={{ border: "2px dashed rgba(99,179,237,0.4)", borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 10, position: "relative", overflow: "hidden", minHeight: 88, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
                 {imgPreview
                   ? <img src={imgPreview} alt="" style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }} />
-                  : <><div style={{ fontSize: 28 }}>📷</div><div style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>העלה תמונת שובר</div><div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>AI ימלא את הפרטים אוטומטית ✨</div></>}
+                  : <>
+                      <div style={{ fontSize: 28 }}>📷</div>
+                      <div style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>העלה תמונת שובר</div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>AI יחלץ מספר, תוקף וסכום אוטומטית ✨</div>
+                    </>}
                 {analyzing && (
                   <div style={{ position: "absolute", inset: 0, background: "rgba(10,16,30,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
                     <span style={{ fontSize: 26, animation: "spin 1s linear infinite", display: "inline-block" }}>🔍</span>
@@ -366,14 +406,20 @@ export default function App() {
                 )}
               </div>
               <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImage} />
-              {aiMsg && <div style={{ background: aiBg[aiMsg.type], border: `1px solid ${aiBr[aiMsg.type]}`, borderRadius: 8, padding: "6px 10px", fontSize: 11, color: aiCl[aiMsg.type], marginBottom: 10 }}>{aiMsg.text}</div>}
+              {aiMsg && (
+                <div style={{ background: aiBg[aiMsg.type], border: `1px solid ${aiBr[aiMsg.type]}`, borderRadius: 8, padding: "7px 11px", fontSize: 11, color: aiCl[aiMsg.type], marginBottom: 10, lineHeight: 1.5 }}>
+                  {aiMsg.text}
+                </div>
+              )}
             </>
           )}
+
           {editId && imgPreview && <img src={imgPreview} alt="" style={{ width: "100%", maxHeight: 120, objectFit: "contain", borderRadius: 8, marginBottom: 12, background: "rgba(0,0,0,0.3)" }} />}
+
           {[
-            { key: "chain", label: "רשת", type: "select" },
-            { key: "code", label: "מספר שובר", placeholder: "הכנס מספר שובר" },
-            { key: "expiry", label: "תוקף עד", type: "date" },
+            { key: "chain",    label: "רשת",        type: "select" },
+            { key: "code",     label: "מספר שובר",  placeholder: "הכנס מספר שובר" },
+            { key: "expiry",   label: "תוקף עד",    type: "date" },
             { key: "discount", label: "ערך / הטבה", placeholder: "לדוגמה: שובר 200₪" },
           ].map((f) => (
             <div key={f.key} style={{ marginBottom: 10 }}>
@@ -386,6 +432,7 @@ export default function App() {
                 : <input type={f.type || "text"} value={form[f.key]} onChange={(e) => f.key === "code" ? onCodeChange(e.target.value) : setField(f.key, e.target.value)} placeholder={f.placeholder} style={inp} />}
             </div>
           ))}
+
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 10, color: "rgba(255,255,255,0.42)", display: "block", marginBottom: 4 }}>הוסף על ידי</label>
             <div style={{ display: "flex", gap: 7 }}>
@@ -394,6 +441,7 @@ export default function App() {
               ))}
             </div>
           </div>
+
           <button onClick={save} style={{ width: "100%", padding: 12, borderRadius: 11, border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", background: editId ? "linear-gradient(135deg,#d97706,#b45309)" : "linear-gradient(135deg,#3182ce,#2563eb)" }}>
             {editId ? "💾 עדכן שובר" : "💾 שמור שובר"}
           </button>
@@ -431,26 +479,29 @@ export default function App() {
         </Modal>
       )}
 
-      {/* Balance iframe */}
+      {/* Balance modal — new tab (mltp.co.il blocks iframe) */}
       {balModal && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", flexDirection: "column" }}>
-          <div style={{ background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.09)", flexShrink: 0 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>💳 בדיקת יתרה — {balModal.chain}</div>
-              {balModal.code && (
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 3, display: "flex", alignItems: "center", gap: 8 }}>
-                  מספר שובר: <span style={{ color: "#63b3ed", fontFamily: "monospace", fontWeight: 700 }}>{balModal.code}</span>
-                  <button
-                    onClick={() => { navigator.clipboard?.writeText(balModal.code); }}
-                    style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, border: "1px solid #63b3ed55", background: "rgba(99,179,237,0.12)", color: "#63b3ed", cursor: "pointer", fontFamily: "inherit" }}
-                  >📋 העתק</button>
-                </div>
-              )}
+        <Modal onClose={() => setBalModal(null)}>
+          <div style={{ textAlign: "center", padding: "8px 0 4px" }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>💳</div>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>בדיקת יתרה</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 18 }}>{balModal.chain}</div>
+            <div style={{ background: "rgba(99,179,237,0.08)", border: "1px solid rgba(99,179,237,0.25)", borderRadius: 14, padding: "14px 16px", marginBottom: 18 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>מספר השובר שלך</div>
+              <div style={{ fontSize: 22, fontWeight: 900, fontFamily: "monospace", color: "#63b3ed", letterSpacing: 2, marginBottom: 12 }}>{balModal.code}</div>
+              <CopyBtn text={balModal.code} />
             </div>
-            <button onClick={() => setBalModal(null)} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 7, padding: "6px 12px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>✕ סגור</button>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.38)", marginBottom: 18, lineHeight: 2 }}>
+              1️⃣ לחץ "העתק" כדי להעתיק את המספר<br />
+              2️⃣ לחץ "פתח אתר" — יפתח בלשונית חדשה<br />
+              3️⃣ הדבק את המספר ובדוק את היתרה
+            </div>
+            <button onClick={() => window.open(balModal.url, "_blank")} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#3182ce,#2563eb)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", marginBottom: 8, boxShadow: "0 4px 16px rgba(49,130,206,0.35)" }}>
+              🌐 פתח אתר בדיקת יתרה
+            </button>
+            <button onClick={() => setBalModal(null)} style={{ width: "100%", padding: 9, borderRadius: 11, border: "1px solid rgba(255,255,255,0.14)", background: "transparent", color: "rgba(255,255,255,0.5)", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>סגור</button>
           </div>
-          <iframe src={balModal.url} style={{ flex: 1, border: "none", width: "100%" }} title="בדיקת יתרה" />
-        </div>
+        </Modal>
       )}
 
       <style>{`
