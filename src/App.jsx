@@ -157,6 +157,7 @@ export default function App() {
   const [pendingUsedId, setPendingUsedId]       = useState(null);
   const [pendingRestoreId, setPendingRestoreId] = useState(null);
   const [balModal, setBalModal]                 = useState(null);
+  const [imgViewer, setImgViewer]               = useState(null); // תצוגת תמונה מלאה
   const [form, setForm]                         = useState({ chain: "", code: "", expiry: "", discount: "", addedBy: "אני" });
   const [imgPreview, setImgPreview]             = useState(null);
   const [analyzing, setAnalyzing]               = useState(false);
@@ -172,6 +173,28 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+
+  // ── האזנה להדבקת תמונה (Ctrl+V) ────────────────────────────────
+  useEffect(() => {
+    const onPaste = (e) => {
+      if (!showForm || editId) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            // simulate file input event
+            const fakeEvt = { target: { files: [file], value: "" } };
+            handleImage(fakeEvt);
+          }
+          break;
+        }
+      }
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [showForm, editId, handleImage]);
 
   const active      = coupons.filter((c) => !c.used);
   const archived    = coupons.filter((c) => c.used);
@@ -192,70 +215,30 @@ export default function App() {
       const dataUrl = ev.target.result;
       setImgPreview(dataUrl);
       setAnalyzing(true);
-
       try {
         const base64 = dataUrl.split(",")[1];
-
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 400,
-            messages: [{
-              role: "user",
-              content: [
-                {
-                  type: "image",
-                  source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 }
-                },
-                {
-                  type: "text",
-                  text: `תמונת שובר/קופון ישראלי. חלץ את הפרטים הבאים וחזור JSON בלבד ללא markdown:
-{"code":"מספר השובר המלא כולל מקפים ונקודות לדוגמה 11111-2222 או 123456789012","expiry":"תאריך תפוגה בפורמט YYYY-MM-DD בלבד","discount":"סכום כסף לדוגמה 200 שקלים או אחוז הנחה"}
-חשוב: קוד השובר כולל את כל הספרות והסימנים שביניהם (מקפים, נקודות). תאריך יכול להיות בפורמט DD/MM/YYYY או DD.MM.YYYY. אם שדה לא קיים השאר ריק.`
-                }
-              ]
-            }]
-          })
+          body: JSON.stringify({ base64, mediaType: file.type || "image/jpeg" }),
         });
-
-        if (res.ok) {
-          const data = await res.json();
-          const text = (data.content || []).map(b => b.text || "").join("");
-          try {
-            const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-            setForm(f => ({
-              ...f,
-              code:     parsed.code     && parsed.code.trim()     ? parsed.code.trim()     : f.code,
-              expiry:   parsed.expiry   && parsed.expiry.trim()   ? parsed.expiry.trim()   : f.expiry,
-              discount: parsed.discount && parsed.discount.trim() ? parsed.discount.trim() : f.discount,
-            }));
-            const found = [];
-            if (parsed.code)     found.push("קוד שובר");
-            if (parsed.expiry)   found.push("תוקף");
-            if (parsed.discount) found.push("סכום");
-            if (found.length > 0) {
-              const missing = [];
-              if (!parsed.code)     missing.push("קוד");
-              if (!parsed.expiry)   missing.push("תוקף");
-              if (!parsed.discount) missing.push("סכום");
-              const msg = missing.length > 0
-                ? `✨ זיהיתי: ${found.join(", ")}. השלם ידנית: ${missing.join(", ")} + רשת`
-                : `✨ זיהיתי: ${found.join(", ")} — בחר רשת ידנית`;
-              setAiMsg({ text: msg, type: "warn" });
-            } else {
-              setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
-            }
-          } catch {
-            setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
-          }
-        } else {
-          // API לא זמין — הצג תמונה בלבד
-          setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
-        }
+        if (!res.ok) throw new Error("server");
+        const data = await res.json();
+        const text = (data.content || []).map(b => b.text || "").join("");
+        const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+        setForm(f => ({
+          ...f,
+          code:     parsed.code     ? parsed.code.trim()     : f.code,
+          expiry:   parsed.expiry   ? parsed.expiry.trim()   : f.expiry,
+          discount: parsed.discount ? parsed.discount.trim() : f.discount,
+        }));
+        const found = [parsed.code && "קוד", parsed.expiry && "תוקף", parsed.discount && "סכום"].filter(Boolean);
+        const missing = [!parsed.code && "קוד", !parsed.expiry && "תוקף", !parsed.discount && "סכום"].filter(Boolean);
+        setAiMsg({ type: "warn", text: found.length
+          ? `✨ זיהיתי: ${found.join(", ")}${missing.length ? ` | השלם: ${missing.join(", ")}` : ""} — בחר רשת ידנית`
+          : "📷 תמונה נטענה — מלא ידנית" });
       } catch {
-        setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
+        setAiMsg({ type: "ok", text: "📷 תמונה נטענה — מלא את הפרטים ידנית" });
       }
       setAnalyzing(false);
     };
@@ -436,18 +419,36 @@ export default function App() {
           {/* העלאת תמונה — רק בהוספה */}
           {!editId && (
             <>
-              <div onClick={() => fileRef.current.click()} style={{ border: "2px dashed rgba(99,179,237,0.4)", borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 10, position: "relative", overflow: "hidden", minHeight: 88, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                {imgPreview
-                  ? <img src={imgPreview} alt="" style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }} />
-                  : <>
-                      <div style={{ fontSize: 28 }}>📷</div>
-                      <div style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>העלה תמונת שובר</div>
-                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>לחץ לבחירת תמונה מהגלריה</div>
-                    </>}
-                {analyzing && (
-                  <div style={{ position: "absolute", inset: 0, background: "rgba(10,16,30,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                    <span style={{ fontSize: 26, animation: "spin 1s linear infinite", display: "inline-block" }}>🔍</span>
-                    <span style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>טוען תמונה...</span>
+              {/* אזור תמונה */}
+              <div style={{ marginBottom: 10 }}>
+                {imgPreview ? (
+                  <div style={{ position: "relative" }}>
+                    <img
+                      src={imgPreview}
+                      alt=""
+                      onClick={() => setImgViewer(imgPreview)}
+                      style={{ width: "100%", maxHeight: 140, objectFit: "contain", borderRadius: 10, background: "rgba(0,0,0,0.3)", cursor: "zoom-in", display: "block" }}
+                    />
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      <button onClick={() => fileRef.current.click()} style={{ flex: 1, padding: "6px", borderRadius: 8, border: "1px solid rgba(99,179,237,0.4)", background: "rgba(99,179,237,0.08)", color: "#63b3ed", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                        🔄 החלף תמונה
+                      </button>
+                      <button onClick={() => setImgViewer(imgPreview)} style={{ flex: 1, padding: "6px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.6)", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                        🔍 הגדל תמונה
+                      </button>
+                    </div>
+                    {analyzing && (
+                      <div style={{ position: "absolute", inset: 0, background: "rgba(10,16,30,0.9)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 10 }}>
+                        <span style={{ fontSize: 26, animation: "spin 1s linear infinite", display: "inline-block" }}>🔍</span>
+                        <span style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>מנתח תמונה...</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div onClick={() => fileRef.current.click()} style={{ border: "2px dashed rgba(99,179,237,0.4)", borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", position: "relative", minHeight: 88, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    <div style={{ fontSize: 28 }}>📷</div>
+                    <div style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>לחץ לבחירת תמונה</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>או הדבק תמונה (Ctrl+V)</div>
                   </div>
                 )}
               </div>
@@ -557,6 +558,23 @@ export default function App() {
             <button onClick={() => setBalModal(null)} style={{ width: "100%", padding: 9, borderRadius: 11, border: "1px solid rgba(255,255,255,0.14)", background: "transparent", color: "rgba(255,255,255,0.5)", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>סגור</button>
           </div>
         </Modal>
+      )}
+
+      {/* תצוגת תמונה מלאה */}
+      {imgViewer && (
+        <div
+          onClick={() => setImgViewer(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.95)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-out" }}
+        >
+          <div style={{ position: "relative", maxWidth: "95vw", maxHeight: "90vh" }}>
+            <img src={imgViewer} alt="" style={{ maxWidth: "95vw", maxHeight: "85vh", objectFit: "contain", borderRadius: 8 }} />
+            <button
+              onClick={() => setImgViewer(null)}
+              style={{ position: "absolute", top: -14, left: -14, width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.15)", color: "#fff", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            >✕</button>
+            <div style={{ textAlign: "center", marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>לחץ בכל מקום לסגירה</div>
+          </div>
+        </div>
       )}
 
       <style>{`
