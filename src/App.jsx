@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { db } from "./firebase";
+import { davidDb, aviDb } from "./firebase";
 import {
   collection, addDoc, updateDoc, deleteDoc,
   doc, onSnapshot, query, orderBy, serverTimestamp,
@@ -111,6 +111,7 @@ function CouponCard({ coupon: c, open, onToggle, onMarkUsed, onRestore, onEdit, 
           </div>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.38)", marginTop: 2, fontFamily: "monospace" }}>{c.code}</div>
           {c.discount && <div style={{ fontSize: 11, color: "#68d391", marginTop: 2 }}>{c.discount}</div>}
+          {c.notes && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 1, fontStyle: "italic" }}>📝 {c.notes}</div>}
         </div>
         <div style={{ textAlign: "center", fontSize: 9, color: "rgba(255,255,255,0.32)", flexShrink: 0, lineHeight: 1.6 }}>
           {c.expiry && <><div>עד</div><div style={{ fontWeight: 700, color: isSoon(c.expiry) && !c.used ? "#ff9800" : undefined }}>{c.expiry}</div></>}
@@ -138,7 +139,115 @@ function CouponCard({ coupon: c, open, onToggle, onMarkUsed, onRestore, onEdit, 
   );
 }
 
-export default function App() {
+
+// ─── סטטיסטיקות ───────────────────────────────────────────────────
+function StatsView({ coupons, active, archived }) {
+  // חילוץ סכום ממחרוזת הנחה
+  const extractAmount = (discount) => {
+    if (!discount) return 0;
+    const m = discount.match(/(\d+[\d,.]*)/);
+    if (!m) return 0;
+    return parseFloat(m[1].replace(/,/g, "")) || 0;
+  };
+
+  const totalActive   = active.reduce((sum, c) => sum + extractAmount(c.discount), 0);
+  const totalArchived = archived.reduce((sum, c) => sum + extractAmount(c.discount), 0);
+  const totalAll      = totalActive + totalArchived;
+
+  // סיכום לפי רשת
+  const byChain = {};
+  for (const c of active) {
+    if (!byChain[c.chain]) byChain[c.chain] = { count: 0, total: 0 };
+    byChain[c.chain].count++;
+    byChain[c.chain].total += extractAmount(c.discount);
+  }
+  const chainList = Object.entries(byChain).sort((a, b) => b[1].total - a[1].total);
+
+  // שוברים שפגים בקרוב
+  const expiringSoon = active.filter(c => isSoon(c.expiry));
+  const expired      = active.filter(c => isExpired(c.expiry));
+
+  const fmt = (n) => n > 0 ? `${n.toLocaleString("he-IL")}₪` : "—";
+
+  return (
+    <div style={{ padding: "10px 14px 80px" }}>
+
+      {/* סיכום כללי */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 8, letterSpacing: 0.5 }}>סיכום כללי</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[
+            { label: "שווי פעילים",  val: fmt(totalActive),   color: "#4caf50", icon: "💰" },
+            { label: "שווי נוצלו",   val: fmt(totalArchived), color: "#ab47bc", icon: "📦" },
+            { label: "סה״כ הכל",    val: fmt(totalAll),      color: "#63b3ed", icon: "🏆" },
+          ].map(s => (
+            <div key={s.label} style={{ flex: 1, background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: "12px 8px", textAlign: "center", border: `1px solid ${s.color}33` }}>
+              <div style={{ fontSize: 16 }}>{s.icon}</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: s.color, marginTop: 4 }}>{s.val}</div>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.38)", marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* שוברים בסכנה */}
+      {(expiringSoon.length > 0 || expired.length > 0) && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>⚠️ דורש תשומת לב</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {expired.length > 0 && (
+              <div style={{ flex: 1, background: "rgba(244,67,54,0.1)", borderRadius: 12, padding: "10px 12px", border: "1px solid #f4433644" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#f44336" }}>{expired.length}</div>
+                <div style={{ fontSize: 10, color: "#f44336", marginTop: 2 }}>פג תוקף</div>
+                <div style={{ fontSize: 11, color: "#f44336", marginTop: 2, fontWeight: 600 }}>{fmt(expired.reduce((s,c) => s + extractAmount(c.discount), 0))}</div>
+              </div>
+            )}
+            {expiringSoon.length > 0 && (
+              <div style={{ flex: 1, background: "rgba(255,152,0,0.1)", borderRadius: 12, padding: "10px 12px", border: "1px solid #ff980044" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#ff9800" }}>{expiringSoon.length}</div>
+                <div style={{ fontSize: 10, color: "#ff9800", marginTop: 2 }}>פגים תוך 7 ימים</div>
+                <div style={{ fontSize: 11, color: "#ff9800", marginTop: 2, fontWeight: 600 }}>{fmt(expiringSoon.reduce((s,c) => s + extractAmount(c.discount), 0))}</div>
+              </div>
+            )}
+            <div style={{ flex: 1, background: "rgba(76,175,80,0.1)", borderRadius: 12, padding: "10px 12px", border: "1px solid #4caf5044" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#4caf50" }}>{active.filter(c => !isSoon(c.expiry) && !isExpired(c.expiry)).length}</div>
+              <div style={{ fontSize: 10, color: "#4caf50", marginTop: 2 }}>תקינים</div>
+              <div style={{ fontSize: 11, color: "#4caf50", marginTop: 2, fontWeight: 600 }}>{fmt(active.filter(c => !isSoon(c.expiry) && !isExpired(c.expiry)).reduce((s,c) => s + extractAmount(c.discount), 0))}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* פירוט לפי רשת */}
+      {chainList.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>פירוט לפי רשת (שוברים פעילים)</div>
+          {chainList.map(([chain, data]) => (
+            <div key={chain} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 10, marginBottom: 7, border: `1px solid ${(BRANDS[chain]?.border || "#6b7280")}33`, borderRight: `3px solid ${BRANDS[chain]?.border || "#6b7280"}` }}>
+              <Logo chain={chain} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{chain}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>{data.count} שובר{data.count !== 1 ? "ים" : ""}</div>
+              </div>
+              <div style={{ textAlign: "left", direction: "ltr" }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#4caf50" }}>{fmt(data.total)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {chainList.length === 0 && (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: "rgba(255,255,255,0.22)", fontSize: 13 }}>
+          📊<br />אין נתונים להצגה
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function App({ dbKey }) {
+  const db = dbKey === "avi" ? aviDb : davidDb;
   const [coupons, setCoupons]                   = useState([]);
   const [loading, setLoading]                   = useState(true);
   const [tab, setTab]                           = useState("active");
@@ -147,11 +256,12 @@ export default function App() {
   const [showForm, setShowForm]                 = useState(false);
   const [editId, setEditId]                     = useState(null);
   const [saving, setSaving]                     = useState(false);
+  const [showStats, setShowStats]               = useState(false);
   const [pendingUsedId, setPendingUsedId]       = useState(null);
   const [pendingRestoreId, setPendingRestoreId] = useState(null);
   const [balModal, setBalModal]                 = useState(null);
   const [imgViewer, setImgViewer]               = useState(null);
-  const [form, setForm]                         = useState({ chain: "", code: "", expiry: "", discount: "", addedBy: "אני" });
+  const [form, setForm]                         = useState({ chain: "", customChain: "", code: "", expiry: "", discount: "", notes: "", addedBy: "אני" });
   const [imgPreview, setImgPreview]             = useState(null);
   const [analyzing, setAnalyzing]               = useState(false);
   const [aiMsg, setAiMsg]                       = useState(null);
@@ -254,30 +364,34 @@ export default function App() {
 
   const openAdd = () => {
     setEditId(null); setImgPreview(null); setAiMsg(null); setSaving(false);
-    setForm({ chain: "", code: "", expiry: "", discount: "", addedBy: "אני" });
+    setForm({ chain: "", customChain: "", code: "", expiry: "", discount: "", notes: "", addedBy: "אני" });
     setShowForm(true);
   };
   const openEdit = (c) => {
     setEditId(c.id); setImgPreview(c.image || null); setAiMsg(null); setSaving(false);
-    setForm({ chain: c.chain, code: c.code, expiry: c.expiry || "", discount: c.discount || "", addedBy: c.addedBy || "אני" });
+    setForm({ chain: c.chain, customChain: "", code: c.code, expiry: c.expiry || "", discount: c.discount || "", notes: c.notes || "", addedBy: c.addedBy || "אני" });
     setShowForm(true);
   };
   const closeForm = () => { setShowForm(false); setEditId(null); setSaving(false); };
 
   const save = async () => {
     if (saving) return;
-    if (!form.chain) { alert("נא לבחור רשת"); return; }
-    if (!form.code.trim()) { alert("נא להזין מספר שובר"); return; }
-    if (!editId) {
-      const dup = coupons.find(c => c.code.trim().toLowerCase() === form.code.trim().toLowerCase());
-      if (dup) { alert(`שובר עם הקוד "${form.code}" כבר קיים!`); return; }
+    // קבע שם רשת — אם "אחר" עם שם מותאם, השתמש בו
+    const chainName = (form.chain === "אחר" && form.customChain.trim())
+      ? form.customChain.trim()
+      : form.chain || "אחר";
+    const codeVal = form.code.trim();
+    // בדיקת כפילות רק אם יש קוד
+    if (codeVal && !editId) {
+      const dup = coupons.find(c => c.code.trim().toLowerCase() === codeVal.toLowerCase());
+      if (dup) { alert(`שובר עם הקוד "${codeVal}" כבר קיים!`); return; }
     }
     setSaving(true);
     try {
       if (editId) {
-        await updateDoc(doc(db, "coupons", editId), { chain: form.chain, code: form.code.trim(), expiry: form.expiry, discount: form.discount, addedBy: form.addedBy });
+        await updateDoc(doc(db, "coupons", editId), { chain: chainName, code: codeVal, expiry: form.expiry, discount: form.discount, notes: form.notes, addedBy: form.addedBy });
       } else {
-        await addDoc(collection(db, "coupons"), { chain: form.chain, code: form.code.trim(), expiry: form.expiry, discount: form.discount, addedBy: form.addedBy, used: false, image: imgPreview || null, createdAt: serverTimestamp() });
+        await addDoc(collection(db, "coupons"), { chain: chainName, code: codeVal, expiry: form.expiry, discount: form.discount, notes: form.notes, addedBy: form.addedBy, used: false, image: imgPreview || null, createdAt: serverTimestamp() });
       }
       closeForm();
       if (!editId) setTab("active");
@@ -330,17 +444,26 @@ export default function App() {
 
       <div style={{ display: "flex", gap: 7, padding: "10px 14px 0" }}>
         {[{ k: "active", l: "📋 פעילים", n: active.length }, { k: "archive", l: "📦 ארכיון", n: archived.length }].map((t) => (
-          <button key={t.k} onClick={() => { setTab(t.k); setExpandedId(null); setFilterChain("הכל"); }} style={{
+          <button key={t.k} onClick={() => { setTab(t.k); setExpandedId(null); setFilterChain("הכל"); setShowStats(false); }} style={{
             flex: 1, borderRadius: 9, padding: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-            fontWeight: tab === t.k ? 700 : 500,
-            background: tab === t.k ? "rgba(99,179,237,0.14)" : "rgba(255,255,255,0.04)",
-            border:     tab === t.k ? "1px solid #63b3ed"     : "1px solid rgba(255,255,255,0.09)",
-            color:      tab === t.k ? "#63b3ed"               : "rgba(255,255,255,0.4)",
+            fontWeight: tab === t.k && !showStats ? 700 : 500,
+            background: tab === t.k && !showStats ? "rgba(99,179,237,0.14)" : "rgba(255,255,255,0.04)",
+            border:     tab === t.k && !showStats ? "1px solid #63b3ed"     : "1px solid rgba(255,255,255,0.09)",
+            color:      tab === t.k && !showStats ? "#63b3ed"               : "rgba(255,255,255,0.4)",
           }}>{t.l} ({t.n})</button>
         ))}
+        <button onClick={() => { setShowStats(true); setExpandedId(null); }} style={{
+          flex: 1, borderRadius: 9, padding: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+          fontWeight: showStats ? 700 : 500,
+          background: showStats ? "rgba(251,191,36,0.14)" : "rgba(255,255,255,0.04)",
+          border:     showStats ? "1px solid #f59e0b"     : "1px solid rgba(255,255,255,0.09)",
+          color:      showStats ? "#f59e0b"               : "rgba(255,255,255,0.4)",
+        }}>📊 סטטיסטיקה</button>
       </div>
 
-      {chainsInTab.length > 2 && (
+      {showStats && <StatsView coupons={coupons} active={active} archived={archived} onClose={() => setShowStats(false)} />}
+
+      {!showStats && chainsInTab.length > 2 && (
         <div style={{ padding: "8px 14px 0", overflowX: "auto", display: "flex", gap: 6, WebkitOverflowScrolling: "touch" }}>
           {chainsInTab.map((ch) => (
             <button key={ch} onClick={() => setFilterChain(ch)} style={{
@@ -375,7 +498,7 @@ export default function App() {
             onViewImg={() => c.image && setImgViewer(c.image)}
           />
         ))}
-      </div>
+      </div>}
 
       {/* מודל הוספה/עריכה */}
       {showForm && (
@@ -430,20 +553,25 @@ export default function App() {
 
           {[
             { key: "chain",    label: "רשת",        type: "select" },
+            { key: "customChain", label: "שם הרשת", type: "custom", placeholder: "הכנס שם רשת", showIf: form.chain === "אחר" },
             { key: "code",     label: "מספר שובר",  placeholder: "הכנס מספר שובר" },
             { key: "expiry",   label: "תוקף עד",    type: "date" },
             { key: "discount", label: "ערך / הטבה", placeholder: "לדוגמה: שובר 200₪" },
-          ].map((f) => (
-            <div key={f.key} style={{ marginBottom: 10 }}>
-              <label style={{ fontSize: 10, color: "rgba(255,255,255,0.42)", display: "block", marginBottom: 4 }}>{f.label}</label>
-              {f.type === "select"
-                ? <select value={form.chain} onChange={(e) => setField("chain", e.target.value)} style={{ ...inp }}>
-                    <option value="">בחר רשת</option>
-                    {CHAIN_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                : <input type={f.type || "text"} value={form[f.key]} onChange={(e) => f.key === "code" ? onCodeChange(e.target.value) : setField(f.key, e.target.value)} placeholder={f.placeholder} style={inp} />}
-            </div>
-          ))}
+            { key: "notes", label: "הערות", placeholder: "הערות נוספות על השובר (לא חובה)" },
+          ].filter(f => !f.showIf !== undefined ? f.showIf !== false : true).map((f) => {
+            if (f.showIf === false) return null;
+            return (
+              <div key={f.key} style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 10, color: "rgba(255,255,255,0.42)", display: "block", marginBottom: 4 }}>{f.label}</label>
+                {f.type === "select"
+                  ? <select value={form.chain} onChange={(e) => setField("chain", e.target.value)} style={{ ...inp }}>
+                      <option value="">בחר רשת</option>
+                      {CHAIN_LIST.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  : <input type={f.type === "custom" ? "text" : f.type || "text"} value={form[f.key]} onChange={(e) => f.key === "code" ? onCodeChange(e.target.value) : setField(f.key, e.target.value)} placeholder={f.placeholder} style={inp} />}
+              </div>
+            );
+          })}
 
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 10, color: "rgba(255,255,255,0.42)", display: "block", marginBottom: 4 }}>הוסף על ידי</label>
