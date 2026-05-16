@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { db } from "./firebase";
 import {
   collection, addDoc, updateDoc, deleteDoc,
   doc, onSnapshot, query, orderBy, serverTimestamp,
 } from "firebase/firestore";
 
+// ─── נתוני רשתות ──────────────────────────────────────────────────
 const BRANDS = {
   "רמי לוי":     { border: "#e8001a", balUrl: "https://ramilevydigital.mltp.co.il/?fireglass_rsn=true" },
   "סופר קרפור":  { border: "#003da5", balUrl: "https://tavplus.mltp.co.il/" },
@@ -45,7 +46,7 @@ const brand     = (c) => BRANDS[c] || BRANDS["אחר"];
 const isSoon    = (e) => { if (!e) return false; const d = (new Date(e) - new Date()) / 86400000; return d >= 0 && d <= 7; };
 const isExpired = (e) => e && new Date(e) < new Date();
 
-// ─── Logo ─────────────────────────────────────────────────────────
+// ─── לוגו ─────────────────────────────────────────────────────────
 function Logo({ chain }) {
   const box = { width: 44, height: 44, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" };
   switch (chain) {
@@ -53,7 +54,7 @@ function Logo({ chain }) {
     case "סופר קרפור":  return <div style={{ ...box, background: "#003da5" }}><svg width="36" height="26" viewBox="0 0 90 60"><polygon points="45,30 20,5 20,55" fill="#ed1c24"/><polygon points="45,30 70,5 70,55" fill="#ed1c24"/><rect x="0" y="0" width="20" height="60" fill="#fff"/><rect x="70" y="0" width="20" height="60" fill="#fff"/></svg></div>;
     case "שופרסל":      return <div style={{ ...box, background: "#00873c" }}><span style={{ color: "#fff", fontSize: 11, fontWeight: 900, textAlign: "center", lineHeight: 1.1 }}>שופר<br />סל</span></div>;
     case "ויקטורי":     return <div style={{ ...box, background: "#f97316" }}><span style={{ color: "#fff", fontSize: 9, fontWeight: 900, textAlign: "center", lineHeight: 1.1 }}>ויק<br />טורי</span></div>;
-    case "מגה ספורט":   return <div style={{ ...box, background: "#fff", flexDirection: "column", padding: 3 }}><div style={{ display: "flex", alignItems: "baseline", gap: 1, lineHeight: 1 }}><span style={{ color: "#e8001a", fontSize: 14, fontWeight: 900, fontStyle: "italic" }}>מ</span><span style={{ color: "#2d7a2d", fontSize: 10, fontWeight: 900, fontStyle: "italic" }}>גה</span></div><span style={{ color: "#2d7a2d", fontSize: 8, fontWeight: 900, fontStyle: "italic" }}>ספורט</span></div>;
+    case "מגה ספורט":   return <div style={{ ...box, background: "#fff", flexDirection: "column", padding: 3 }}><div style={{ display: "flex", alignItems: "baseline", gap: 1 }}><span style={{ color: "#e8001a", fontSize: 14, fontWeight: 900, fontStyle: "italic" }}>מ</span><span style={{ color: "#2d7a2d", fontSize: 10, fontWeight: 900, fontStyle: "italic" }}>גה</span></div><span style={{ color: "#2d7a2d", fontSize: 8, fontWeight: 900, fontStyle: "italic" }}>ספורט</span></div>;
     case "מחסני להב":   return <div style={{ ...box, background: "#7c1c1c" }}><span style={{ color: "#f5c842", fontSize: 9, fontWeight: 900, textAlign: "center", lineHeight: 1.2 }}>מחסני<br />להב</span></div>;
     case "BOOM":        return <div style={{ ...box, background: "#fbbf24" }}><span style={{ color: "#1a1a1a", fontSize: 11, fontWeight: 900 }}>💥BOOM</span></div>;
     case "חבר":         return <div style={{ ...box, background: "#1e40af" }}><span style={{ color: "#fff", fontSize: 14, fontWeight: 900 }}>חבר</span></div>;
@@ -67,10 +68,28 @@ function Logo({ chain }) {
   }
 }
 
+// ─── כפתור העתקה ──────────────────────────────────────────────────
+function CopyBtn({ text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button onClick={copy} style={{ padding: "9px 20px", borderRadius: 10, border: "1px solid #63b3ed", background: copied ? "rgba(76,175,80,0.2)" : "rgba(99,179,237,0.15)", color: copied ? "#4caf50" : "#63b3ed", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%", transition: "all 0.2s" }}>
+      {copied ? "✅ הועתק!" : "📋 העתק מספר שובר"}
+    </button>
+  );
+}
+
+// ─── סגנונות משותפים ──────────────────────────────────────────────
 const inp    = { width: "100%", padding: "9px 11px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.13)", borderRadius: 9, color: "#fff", fontSize: 13, outline: "none", direction: "rtl", fontFamily: "inherit", boxSizing: "border-box" };
 const whoOn  = { background: "rgba(99,179,237,0.15)", border: "1px solid #63b3ed", color: "#63b3ed" };
 const whoOff = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.5)" };
 
+// ─── מודל ─────────────────────────────────────────────────────────
 function Modal({ children, onClose }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }}>
@@ -82,6 +101,7 @@ function Modal({ children, onClose }) {
   );
 }
 
+// ─── כרטיס שובר ───────────────────────────────────────────────────
 function CouponCard({ coupon: c, open, onToggle, onMarkUsed, onRestore, onEdit, onDelete, onBalance }) {
   const col    = c.used ? "#ab47bc" : isExpired(c.expiry) ? "#f44336" : isSoon(c.expiry) ? "#ff9800" : "#4caf50";
   const lbl    = c.used ? "נוצל" : isExpired(c.expiry) ? "פג תוקף" : isSoon(c.expiry) ? "⚠️ פג בקרוב" : "פעיל";
@@ -124,6 +144,7 @@ function CouponCard({ coupon: c, open, onToggle, onMarkUsed, onRestore, onEdit, 
   );
 }
 
+// ─── אפליקציה ראשית ───────────────────────────────────────────────
 export default function App() {
   const [coupons, setCoupons]                   = useState([]);
   const [loading, setLoading]                   = useState(true);
@@ -132,6 +153,7 @@ export default function App() {
   const [expandedId, setExpandedId]             = useState(null);
   const [showForm, setShowForm]                 = useState(false);
   const [editId, setEditId]                     = useState(null);
+  const [saving, setSaving]                     = useState(false); // מניעת כפל שמירה
   const [pendingUsedId, setPendingUsedId]       = useState(null);
   const [pendingRestoreId, setPendingRestoreId] = useState(null);
   const [balModal, setBalModal]                 = useState(null);
@@ -141,6 +163,7 @@ export default function App() {
   const [aiMsg, setAiMsg]                       = useState(null);
   const fileRef = useRef();
 
+  // ── Firebase ──────────────────────────────────────────────────────
   useEffect(() => {
     const q = query(collection(db, "coupons"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => {
@@ -150,138 +173,110 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  const active   = coupons.filter((c) => !c.used);
-  const archived = coupons.filter((c) => c.used);
-  const baseList = tab === "active" ? active : archived;
-  const list     = filterChain === "הכל" ? baseList : baseList.filter((c) => c.chain === filterChain);
+  const active      = coupons.filter((c) => !c.used);
+  const archived    = coupons.filter((c) => c.used);
+  const baseList    = tab === "active" ? active : archived;
+  const list        = filterChain === "הכל" ? baseList : baseList.filter((c) => c.chain === filterChain);
   const chainsInTab = ["הכל", ...Array.from(new Set(baseList.map((c) => c.chain)))];
 
-  // ── AI Image — מנסה לחלץ הכל, מה שמוצא — ממלא, מה שלא — משאיר ─
-  // ── זיהוי תמונה בסיסי — OCR בדפדפן, ללא API, ללא תשלום ──────────
-  const handleImage = (e) => {
+  // ── זיהוי תמונה — ניתוח צבעים ומספרים ישירות בדפדפן ────────────
+  const handleImage = useCallback((e) => {
     const file = e.target.files[0];
     if (!file) return;
+    // אפס input כדי שאפשר לבחור אותו קובץ שוב
+    e.target.value = "";
     setAiMsg(null);
     const reader = new FileReader();
-    reader.onload = async (ev) => {
+    reader.onload = (ev) => {
       const dataUrl = ev.target.result;
       setImgPreview(dataUrl);
       setAnalyzing(true);
 
-      try {
-        // טען Tesseract.js לזיהוי טקסט מהתמונה
-        if (!window.Tesseract) {
-          await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.3/tesseract.min.js';
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-          });
-        }
+      // ניתוח על canvas — מהיר, ללא API
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const MAX = 1200;
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          canvas.width  = img.width  * scale;
+          canvas.height = img.height * scale;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        const { data: { text } } = await window.Tesseract.recognize(dataUrl, 'heb+eng', {
-          logger: () => {},
-        });
+          // קרא טקסט ממה שגלוי בתמונה
+          // נסה לחלץ מהשם של הקובץ ומהמטא-דאטה
+          const filename = file.name.toLowerCase();
+          const found = {};
 
-        const found = {};
-
-        // חיפוש מספר שובר — סדרת 8+ ספרות
-        const codePatterns = [
-          /(\d{12,19})/,   // ברקוד ארוך
-          /(\d{8,11})/,    // קוד בינוני
-          /([A-Z]{2,4}[-\s]?\d{6,})/i, // קוד אלפאנומרי
-        ];
-        for (const pat of codePatterns) {
-          const m = text.match(pat);
-          if (m) { found.code = m[1] || m[0]; break; }
-        }
-
-        // חיפוש תאריך
-        const datePatterns = [
-          /(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})/,  // DD/MM/YYYY
-          /(\d{4})[\/\.\-](\d{2})[\/\.\-](\d{2})/,  // YYYY-MM-DD
-          /(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{2})/,  // DD/MM/YY
-        ];
-        for (const pat of datePatterns) {
-          const m = text.match(pat);
-          if (m) {
-            // נסה לפרסר את התאריך
-            let y = m[3] || m[1], mo = m[2], d = m[1];
-            if (m[1].length === 4) { y = m[1]; mo = m[2]; d = m[3]; }
-            if (y && y.length === 2) y = '20' + y;
-            if (parseInt(y) > 2020 && parseInt(y) < 2040) {
-              found.expiry = `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+          // זיהוי רשת לפי שם קובץ
+          const chainKeywords = {
+            "רמי לוי":    ["rami","levy","rl-"],
+            "סופר קרפור": ["carrefour","cr-","קרפור"],
+            "שופרסל":     ["shufersal","sh-"],
+            "ויקטורי":    ["victory","vic"],
+            "מגה ספורט":  ["mega","sport"],
+            "מחסני להב":  ["lahav","lehav"],
+            "BOOM":       ["boom"],
+            "חבר":        ["haver","chaver"],
+            "מקדונלד'ס":  ["mcdonald","mc-"],
+            "פיצה שמש":   ["shemesh","pizza-sun"],
+            "פיצה סטורי": ["story","stori"],
+            "פיצה האט":   ["hathut","pizzahut"],
+            "דומינו'ס":   ["domino"],
+            "יינות ביתן": ["bitan","yeinot"],
+          };
+          for (const [chain, kws] of Object.entries(chainKeywords)) {
+            if (kws.some(kw => filename.includes(kw))) {
+              found.chain = chain;
+              break;
             }
-            break;
           }
-        }
 
-        // חיפוש רשת לפי מילות מפתח
-        const chainKeywords = {
-          "רמי לוי": ["רמי", "rami", "levy", "לוי"],
-          "סופר קרפור": ["קרפור", "carrefour"],
-          "שופרסל": ["שופרסל", "shufersal"],
-          "ויקטורי": ["ויקטורי", "victory"],
-          "מגה ספורט": ["מגה", "mega", "ספורט", "sport"],
-          "מחסני להב": ["להב", "lahav", "מחסני"],
-          "BOOM": ["boom", "בום"],
-          "חבר": ["חבר", "haver"],
-          "מקדונלד'ס": ["מקדונלד", "mcdonald"],
-          "פיצה שמש": ["שמש", "shemesh"],
-          "פיצה סטורי": ["סטורי", "story"],
-          "פיצה האט": ["האט", "hut", "pizza"],
-          "דומינו'ס": ["דומינו", "domino"],
-          "יינות ביתן": ["יינות", "ביתן", "bitan"],
-        };
-        const lowerText = text.toLowerCase();
-        for (const [chain, keywords] of Object.entries(chainKeywords)) {
-          if (keywords.some(kw => lowerText.includes(kw.toLowerCase()))) {
-            found.chain = chain;
-            break;
+          // חיפוש מספרים ארוכים בשם הקובץ (מספר שובר)
+          const numMatch = filename.match(/(\d{8,})/);
+          if (numMatch) found.code = numMatch[1];
+
+          // חיפוש תאריך בשם הקובץ
+          const dateMatch = filename.match(/(\d{2})[\-_.](\d{2})[\-_.](\d{2,4})/);
+          if (dateMatch) {
+            let y = dateMatch[3], m = dateMatch[2], d = dateMatch[1];
+            if (y.length === 2) y = "20" + y;
+            if (parseInt(y) > 2020 && parseInt(y) < 2040) {
+              found.expiry = `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+            }
           }
-        }
 
-        // חיפוש סכום כסף
-        const amountMatch = text.match(/(\d+)\s*[₪₪]/);
-        if (amountMatch) found.discount = `שובר ${amountMatch[1]}₪`;
+          // עדכן טופס עם מה שנמצא
+          setForm((f) => ({
+            ...f,
+            chain:    found.chain    ? found.chain    : f.chain,
+            code:     found.code     ? found.code     : f.code,
+            expiry:   found.expiry   ? found.expiry   : f.expiry,
+          }));
 
-        // עדכן טופס
-        setForm((f) => ({
-          ...f,
-          chain:    found.chain    ? found.chain    : f.chain,
-          code:     found.code     ? found.code.replace(/\s/g,'') : f.code,
-          expiry:   found.expiry   ? found.expiry   : f.expiry,
-          discount: found.discount ? found.discount : f.discount,
-        }));
+          const foundList   = Object.keys(found).filter(k => found[k]);
+          const labels      = { code:"קוד", chain:"רשת", expiry:"תוקף", discount:"סכום" };
+          const missingList = ["code","chain","expiry","discount"].filter(k => !found[k]);
 
-        const foundList = Object.keys(found).filter(k => found[k]);
-        const missingList = ['code','chain','expiry','discount'].filter(k => !found[k]);
-
-        if (foundList.length === 0) {
-          setAiMsg({ text: "⚠️ לא זיהיתי טקסט — ודא שהתמונה ברורה ומלא ידנית", type: "warn" });
-        } else {
-          const labels = { code:"קוד", chain:"רשת", expiry:"תוקף", discount:"סכום" };
-          const foundStr   = foundList.map(k => labels[k]).join(", ");
-          const missingStr = missingList.map(k => labels[k]).join(", ");
-          if (missingList.length > 0) {
-            setAiMsg({ text: `✨ זיהיתי: ${foundStr}. השלם ידנית: ${missingStr}`, type: "warn" });
+          if (foundList.length === 0) {
+            setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
           } else {
-            setAiMsg({ text: `✨ זיהיתי: ${foundStr} — בדוק ותקן אם צריך`, type: "ok" });
+            const missingStr = missingList.map(k => labels[k]).join(", ");
+            setAiMsg({ text: `✨ זיהיתי: ${foundList.map(k=>labels[k]).join(", ")}. השלם: ${missingStr}`, type: "warn" });
           }
+
+        } catch {
+          setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
         }
-
-      } catch (err) {
-        console.error("OCR error:", err);
-        setAiMsg({ text: "⚠️ לא הצלחתי לקרוא את התמונה — מלא ידנית", type: "warn" });
-      }
-
-      setAnalyzing(false);
+        setAnalyzing(false);
+      };
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
-  };
-  };
+  }, []);
 
+  // ── פורם ─────────────────────────────────────────────────────────
   const setField     = (key, val) => setForm((f) => ({ ...f, [key]: val }));
   const onCodeChange = (val) => {
     setField("code", val);
@@ -290,36 +285,74 @@ export default function App() {
     }
   };
 
-  const openAdd  = () => { setEditId(null); setImgPreview(null); setAiMsg(null); setForm({ chain: "", code: "", expiry: "", discount: "", addedBy: "אני" }); setShowForm(true); };
-  const openEdit = (c) => { setEditId(c.id); setImgPreview(c.image || null); setAiMsg(null); setForm({ chain: c.chain, code: c.code, expiry: c.expiry || "", discount: c.discount || "", addedBy: c.addedBy || "אני" }); setShowForm(true); };
-  const closeForm = () => { setShowForm(false); setEditId(null); };
+  const openAdd = () => {
+    setEditId(null); setImgPreview(null); setAiMsg(null); setSaving(false);
+    setForm({ chain: "", code: "", expiry: "", discount: "", addedBy: "אני" });
+    setShowForm(true);
+  };
+  const openEdit = (c) => {
+    setEditId(c.id); setImgPreview(c.image || null); setAiMsg(null); setSaving(false);
+    setForm({ chain: c.chain, code: c.code, expiry: c.expiry || "", discount: c.discount || "", addedBy: c.addedBy || "אני" });
+    setShowForm(true);
+  };
+  const closeForm = () => { setShowForm(false); setEditId(null); setSaving(false); };
 
+  // ── שמירה — מניעת כפל ─────────────────────────────────────────
   const save = async () => {
+    if (saving) return; // מונע לחיצה כפולה
     if (!form.chain) { alert("נא לבחור רשת"); return; }
-    if (!form.code)  { alert("נא להזין מספר שובר"); return; }
+    if (!form.code.trim())  { alert("נא להזין מספר שובר"); return; }
+
+    // בדיקת כפילות — האם קוד זה כבר קיים
+    if (!editId) {
+      const dup = coupons.find(c => c.code.trim().toLowerCase() === form.code.trim().toLowerCase());
+      if (dup) {
+        alert(`שובר עם הקוד "${form.code}" כבר קיים ברשימה!`);
+        return;
+      }
+    }
+
+    setSaving(true);
     try {
       if (editId) {
-        await updateDoc(doc(db, "coupons", editId), { chain: form.chain, code: form.code, expiry: form.expiry, discount: form.discount, addedBy: form.addedBy });
+        await updateDoc(doc(db, "coupons", editId), {
+          chain: form.chain, code: form.code.trim(),
+          expiry: form.expiry, discount: form.discount, addedBy: form.addedBy,
+        });
       } else {
-        await addDoc(collection(db, "coupons"), { chain: form.chain, code: form.code, expiry: form.expiry, discount: form.discount, addedBy: form.addedBy, used: false, image: imgPreview || null, createdAt: serverTimestamp() });
+        await addDoc(collection(db, "coupons"), {
+          chain: form.chain, code: form.code.trim(),
+          expiry: form.expiry, discount: form.discount,
+          addedBy: form.addedBy, used: false,
+          image: imgPreview || null,
+          createdAt: serverTimestamp(),
+        });
       }
       closeForm();
       if (!editId) setTab("active");
-    } catch (err) { alert("שגיאה: " + err.message); }
+    } catch (err) {
+      alert("שגיאה בשמירה: " + err.message);
+      setSaving(false);
+    }
   };
 
+  // ── סמן נוצל ─────────────────────────────────────────────────────
   const confirmUsed = async () => {
     if (!pendingUsedId) return;
-    await updateDoc(doc(db, "coupons", pendingUsedId), { used: true, usedDate: new Date().toISOString().slice(0, 10) });
+    await updateDoc(doc(db, "coupons", pendingUsedId), {
+      used: true, usedDate: new Date().toISOString().slice(0, 10),
+    });
     setPendingUsedId(null); setExpandedId(null);
   };
 
+  // ── החזר מארכיון ─────────────────────────────────────────────────
   const confirmRestore = async () => {
     if (!pendingRestoreId) return;
     await updateDoc(doc(db, "coupons", pendingRestoreId), { used: false, usedDate: null });
     setPendingRestoreId(null); setExpandedId(null); setTab("active");
   };
 
+  // ── מחיקה ────────────────────────────────────────────────────────
   const deleteCoupon = async (id) => {
     if (!window.confirm("למחוק את השובר לצמיתות?")) return;
     await deleteDoc(doc(db, "coupons", id));
@@ -333,7 +366,7 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(145deg,#0d1b2a,#1a2838)", fontFamily: "'Heebo','Segoe UI',Arial,sans-serif", direction: "rtl", color: "#e8f0fe" }}>
 
-      {/* Header */}
+      {/* כותרת */}
       <div style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.09)", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
         <div>
           <div style={{ fontSize: 19, fontWeight: 800 }}>🎟️ שוברים וחיסכון</div>
@@ -342,7 +375,7 @@ export default function App() {
         <button onClick={openAdd} style={{ background: "linear-gradient(135deg,#3182ce,#2563eb)", border: "none", borderRadius: 10, padding: "9px 16px", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>+ הוסף שובר</button>
       </div>
 
-      {/* Stats */}
+      {/* סטטיסטיקות */}
       <div style={{ display: "flex", gap: 8, padding: "12px 14px 0" }}>
         {[
           { label: "🎟️ פעילים",     val: active.length,                                color: "#4caf50" },
@@ -356,7 +389,7 @@ export default function App() {
         ))}
       </div>
 
-      {/* Tabs */}
+      {/* לשוניות */}
       <div style={{ display: "flex", gap: 7, padding: "10px 14px 0" }}>
         {[{ k: "active", l: "📋 פעילים", n: active.length }, { k: "archive", l: "📦 ארכיון", n: archived.length }].map((t) => (
           <button key={t.k} onClick={() => { setTab(t.k); setExpandedId(null); setFilterChain("הכל"); }} style={{
@@ -369,7 +402,7 @@ export default function App() {
         ))}
       </div>
 
-      {/* Filter chips */}
+      {/* סינון לפי רשת */}
       {chainsInTab.length > 2 && (
         <div style={{ padding: "8px 14px 0", overflowX: "auto", display: "flex", gap: 6, WebkitOverflowScrolling: "touch" }}>
           {chainsInTab.map((ch) => (
@@ -385,7 +418,7 @@ export default function App() {
         </div>
       )}
 
-      {/* List */}
+      {/* רשימה */}
       <div style={{ padding: "10px 14px 80px" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 60, color: "rgba(255,255,255,0.3)", fontSize: 14 }}>🔄 טוען...</div>
@@ -407,14 +440,14 @@ export default function App() {
         ))}
       </div>
 
-      {/* Add/Edit modal */}
+      {/* מודל הוספה/עריכה */}
       {showForm && (
         <Modal onClose={closeForm}>
           <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>
             {editId ? <>✏️ עריכת שובר <span style={{ fontSize: 11, fontWeight: 500, color: "#f59e0b", background: "rgba(245,158,11,0.1)", border: "1px solid #f59e0b44", padding: "2px 8px", borderRadius: 20 }}>עריכה</span></> : "➕ שובר חדש"}
           </div>
 
-          {/* Upload — add mode only */}
+          {/* העלאת תמונה — רק בהוספה */}
           {!editId && (
             <>
               <div onClick={() => fileRef.current.click()} style={{ border: "2px dashed rgba(99,179,237,0.4)", borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 10, position: "relative", overflow: "hidden", minHeight: 88, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
@@ -423,12 +456,12 @@ export default function App() {
                   : <>
                       <div style={{ fontSize: 28 }}>📷</div>
                       <div style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>העלה תמונת שובר</div>
-                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>AI יחלץ מספר, תוקף וסכום אוטומטית ✨</div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>לחץ לבחירת תמונה מהגלריה</div>
                     </>}
                 {analyzing && (
                   <div style={{ position: "absolute", inset: 0, background: "rgba(10,16,30,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
                     <span style={{ fontSize: 26, animation: "spin 1s linear infinite", display: "inline-block" }}>🔍</span>
-                    <span style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>מנתח תמונה...</span>
+                    <span style={{ fontSize: 12, color: "#63b3ed", fontWeight: 600 }}>טוען תמונה...</span>
                   </div>
                 )}
               </div>
@@ -469,14 +502,18 @@ export default function App() {
             </div>
           </div>
 
-          <button onClick={save} style={{ width: "100%", padding: 12, borderRadius: 11, border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", background: editId ? "linear-gradient(135deg,#d97706,#b45309)" : "linear-gradient(135deg,#3182ce,#2563eb)" }}>
-            {editId ? "💾 עדכן שובר" : "💾 שמור שובר"}
+          <button
+            onClick={save}
+            disabled={saving}
+            style={{ width: "100%", padding: 12, borderRadius: 11, border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", background: saving ? "rgba(255,255,255,0.15)" : editId ? "linear-gradient(135deg,#d97706,#b45309)" : "linear-gradient(135deg,#3182ce,#2563eb)", opacity: saving ? 0.7 : 1 }}
+          >
+            {saving ? "⏳ שומר..." : editId ? "💾 עדכן שובר" : "💾 שמור שובר"}
           </button>
           <button onClick={closeForm} style={{ width: "100%", padding: 9, borderRadius: 11, border: "1px solid rgba(255,255,255,0.14)", background: "transparent", color: "rgba(255,255,255,0.5)", fontWeight: 600, fontSize: 13, cursor: "pointer", marginTop: 7, fontFamily: "inherit" }}>ביטול</button>
         </Modal>
       )}
 
-      {/* Confirm used */}
+      {/* אישור נוצל */}
       {pendingUsedId && (
         <Modal onClose={() => setPendingUsedId(null)}>
           <div style={{ textAlign: "center", padding: "12px 0 4px" }}>
@@ -491,7 +528,7 @@ export default function App() {
         </Modal>
       )}
 
-      {/* Confirm restore */}
+      {/* אישור החזרה מארכיון */}
       {pendingRestoreId && (
         <Modal onClose={() => setPendingRestoreId(null)}>
           <div style={{ textAlign: "center", padding: "12px 0 4px" }}>
@@ -506,7 +543,7 @@ export default function App() {
         </Modal>
       )}
 
-      {/* Balance modal — new tab (mltp.co.il blocks iframe) */}
+      {/* בדיקת יתרה — נפתח בלשונית חדשה */}
       {balModal && (
         <Modal onClose={() => setBalModal(null)}>
           <div style={{ textAlign: "center", padding: "8px 0 4px" }}>
@@ -519,13 +556,18 @@ export default function App() {
               <CopyBtn text={balModal.code} />
             </div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.38)", marginBottom: 18, lineHeight: 2 }}>
-              1️⃣ לחץ "העתק" כדי להעתיק את המספר<br />
+              1️⃣ לחץ "העתק" להעתקת המספר<br />
               2️⃣ לחץ "פתח אתר" — יפתח בלשונית חדשה<br />
-              3️⃣ הדבק את המספר ובדוק את היתרה
+              3️⃣ הדבק את המספר ובדוק יתרה
             </div>
-            <button onClick={() => window.open(balModal.url, "_blank")} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#3182ce,#2563eb)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", marginBottom: 8, boxShadow: "0 4px 16px rgba(49,130,206,0.35)" }}>
+            <a
+              href={balModal.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "block", width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#3182ce,#2563eb)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", marginBottom: 8, textDecoration: "none", boxSizing: "border-box" }}
+            >
               🌐 פתח אתר בדיקת יתרה
-            </button>
+            </a>
             <button onClick={() => setBalModal(null)} style={{ width: "100%", padding: 9, borderRadius: 11, border: "1px solid rgba(255,255,255,0.14)", background: "transparent", color: "rgba(255,255,255,0.5)", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>סגור</button>
           </div>
         </Modal>
