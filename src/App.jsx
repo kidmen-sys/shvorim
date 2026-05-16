@@ -180,98 +180,84 @@ export default function App() {
   const chainsInTab = ["הכל", ...Array.from(new Set(baseList.map((c) => c.chain)))];
 
   // ── זיהוי תמונה — ניתוח צבעים ומספרים ישירות בדפדפן ────────────
+  // ── זיהוי תמונה — קריאה אמיתית מתוכן התמונה ──────────────────────
+  // משתמש ב-Claude Vision דרך ה-Artifact API (כבר כלול במנוי)
   const handleImage = useCallback((e) => {
     const file = e.target.files[0];
     if (!file) return;
-    // אפס input כדי שאפשר לבחור אותו קובץ שוב
     e.target.value = "";
     setAiMsg(null);
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const dataUrl = ev.target.result;
       setImgPreview(dataUrl);
       setAnalyzing(true);
 
-      // ניתוח על canvas — מהיר, ללא API
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const canvas = document.createElement("canvas");
-          const MAX = 1200;
-          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-          canvas.width  = img.width  * scale;
-          canvas.height = img.height * scale;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      try {
+        const base64 = dataUrl.split(",")[1];
 
-          // קרא טקסט ממה שגלוי בתמונה
-          // נסה לחלץ מהשם של הקובץ ומהמטא-דאטה
-          const filename = file.name.toLowerCase();
-          const found = {};
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 400,
+            messages: [{
+              role: "user",
+              content: [
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 }
+                },
+                {
+                  type: "text",
+                  text: `תמונת שובר/קופון ישראלי. חלץ את הפרטים הבאים וחזור JSON בלבד ללא markdown:
+{"code":"מספר השובר המלא כולל מקפים ונקודות לדוגמה 11111-2222 או 123456789012","expiry":"תאריך תפוגה בפורמט YYYY-MM-DD בלבד","discount":"סכום כסף לדוגמה 200 שקלים או אחוז הנחה"}
+חשוב: קוד השובר כולל את כל הספרות והסימנים שביניהם (מקפים, נקודות). תאריך יכול להיות בפורמט DD/MM/YYYY או DD.MM.YYYY. אם שדה לא קיים השאר ריק.`
+                }
+              ]
+            }]
+          })
+        });
 
-          // זיהוי רשת לפי שם קובץ
-          const chainKeywords = {
-            "רמי לוי":    ["rami","levy","rl-"],
-            "סופר קרפור": ["carrefour","cr-","קרפור"],
-            "שופרסל":     ["shufersal","sh-"],
-            "ויקטורי":    ["victory","vic"],
-            "מגה ספורט":  ["mega","sport"],
-            "מחסני להב":  ["lahav","lehav"],
-            "BOOM":       ["boom"],
-            "חבר":        ["haver","chaver"],
-            "מקדונלד'ס":  ["mcdonald","mc-"],
-            "פיצה שמש":   ["shemesh","pizza-sun"],
-            "פיצה סטורי": ["story","stori"],
-            "פיצה האט":   ["hathut","pizzahut"],
-            "דומינו'ס":   ["domino"],
-            "יינות ביתן": ["bitan","yeinot"],
-          };
-          for (const [chain, kws] of Object.entries(chainKeywords)) {
-            if (kws.some(kw => filename.includes(kw))) {
-              found.chain = chain;
-              break;
+        if (res.ok) {
+          const data = await res.json();
+          const text = (data.content || []).map(b => b.text || "").join("");
+          try {
+            const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+            setForm(f => ({
+              ...f,
+              code:     parsed.code     && parsed.code.trim()     ? parsed.code.trim()     : f.code,
+              expiry:   parsed.expiry   && parsed.expiry.trim()   ? parsed.expiry.trim()   : f.expiry,
+              discount: parsed.discount && parsed.discount.trim() ? parsed.discount.trim() : f.discount,
+            }));
+            const found = [];
+            if (parsed.code)     found.push("קוד שובר");
+            if (parsed.expiry)   found.push("תוקף");
+            if (parsed.discount) found.push("סכום");
+            if (found.length > 0) {
+              const missing = [];
+              if (!parsed.code)     missing.push("קוד");
+              if (!parsed.expiry)   missing.push("תוקף");
+              if (!parsed.discount) missing.push("סכום");
+              const msg = missing.length > 0
+                ? `✨ זיהיתי: ${found.join(", ")}. השלם ידנית: ${missing.join(", ")} + רשת`
+                : `✨ זיהיתי: ${found.join(", ")} — בחר רשת ידנית`;
+              setAiMsg({ text: msg, type: "warn" });
+            } else {
+              setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
             }
-          }
-
-          // חיפוש מספרים ארוכים בשם הקובץ (מספר שובר)
-          const numMatch = filename.match(/(\d{8,})/);
-          if (numMatch) found.code = numMatch[1];
-
-          // חיפוש תאריך בשם הקובץ
-          const dateMatch = filename.match(/(\d{2})[\-_.](\d{2})[\-_.](\d{2,4})/);
-          if (dateMatch) {
-            let y = dateMatch[3], m = dateMatch[2], d = dateMatch[1];
-            if (y.length === 2) y = "20" + y;
-            if (parseInt(y) > 2020 && parseInt(y) < 2040) {
-              found.expiry = `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
-            }
-          }
-
-          // עדכן טופס עם מה שנמצא
-          setForm((f) => ({
-            ...f,
-            chain:    found.chain    ? found.chain    : f.chain,
-            code:     found.code     ? found.code     : f.code,
-            expiry:   found.expiry   ? found.expiry   : f.expiry,
-          }));
-
-          const foundList   = Object.keys(found).filter(k => found[k]);
-          const labels      = { code:"קוד", chain:"רשת", expiry:"תוקף", discount:"סכום" };
-          const missingList = ["code","chain","expiry","discount"].filter(k => !found[k]);
-
-          if (foundList.length === 0) {
+          } catch {
             setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
-          } else {
-            const missingStr = missingList.map(k => labels[k]).join(", ");
-            setAiMsg({ text: `✨ זיהיתי: ${foundList.map(k=>labels[k]).join(", ")}. השלם: ${missingStr}`, type: "warn" });
           }
-
-        } catch {
+        } else {
+          // API לא זמין — הצג תמונה בלבד
           setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
         }
-        setAnalyzing(false);
-      };
-      img.src = dataUrl;
+      } catch {
+        setAiMsg({ text: "📷 תמונה נטענה — מלא את הפרטים ידנית", type: "ok" });
+      }
+      setAnalyzing(false);
     };
     reader.readAsDataURL(file);
   }, []);
