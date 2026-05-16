@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { davidDb, aviDb } from "./firebase";
+import { db } from "./firebase";
 import {
   collection, addDoc, updateDoc, deleteDoc,
   doc, onSnapshot, query, orderBy, serverTimestamp,
@@ -246,8 +246,7 @@ function StatsView({ coupons, active, archived }) {
   );
 }
 
-export default function App({ dbKey }) {
-  const db = dbKey === "avi" ? aviDb : davidDb;
+export default function App() {
   const [coupons, setCoupons]                   = useState([]);
   const [loading, setLoading]                   = useState(true);
   const [tab, setTab]                           = useState("active");
