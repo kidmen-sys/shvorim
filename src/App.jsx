@@ -374,7 +374,13 @@ export default function App() {
   });
 
   const displayedActive = sortedActive.filter(c => filterChain === "הכל" || c.chain === filterChain);
-  const displayedArchived = archived.filter(c => filterChain === "הכל" || c.chain === filterChain);
+  // ארכיון — הכי חדש למעלה
+  const sortedArchived = [...archived].sort((a, b) => {
+    const ta = a.createdAt?.toMillis?.() ?? 0;
+    const tb = b.createdAt?.toMillis?.() ?? 0;
+    return tb - ta;
+  });
+  const displayedArchived = sortedArchived.filter(c => filterChain === "הכל" || c.chain === filterChain);
   const displayedList = tab === "active" ? displayedActive : displayedArchived;
 
   const soon14Count = active.filter(c => isSoon(c.expiry) && !isExpired(c.expiry)).length;
