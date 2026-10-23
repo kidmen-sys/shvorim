@@ -33,11 +33,11 @@ const daysLeft  = (e) => { if (!e) return null; return Math.ceil((new Date(e) - 
 function Logo({ chain }) {
   const box = { width: 44, height: 44, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" };
   const logos = {
-    "רמי לוי":    <div style={{ ...box, background: "#fff" }}><img src="https://upload.wikimedia.org/wikipedia/he/thumb/4/4e/Rami_Levy_Logo.svg/200px-Rami_Levy_Logo.svg.png" style={{ width: 36, objectFit: "contain" }} alt="" /></div>,
-    "סופר קרפור": <div style={{ ...box, background: "#003da5" }}><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Carrefour_logo.svg/200px-Carrefour_logo.svg.png" style={{ width: 34, objectFit: "contain" }} alt="" /></div>,
-    "שופרסל":     <div style={{ ...box, background: "#fff" }}><img src="https://upload.wikimedia.org/wikipedia/he/thumb/a/a4/Shufersal_logo.svg/200px-Shufersal_logo.svg.png" style={{ width: 36, objectFit: "contain" }} alt="" /></div>,
-    "ויקטורי":    <div style={{ ...box, background: "#fff" }}><img src="https://upload.wikimedia.org/wikipedia/he/thumb/8/87/Victory_Israel_logo.svg/200px-Victory_Israel_logo.svg.png" style={{ width: 36, objectFit: "contain" }} alt="" /></div>,
-    "מגה ספורט":  <div style={{ ...box, background: "#fff" }}><img src="https://upload.wikimedia.org/wikipedia/he/b/b0/Mega_sport_logo.png" style={{ width: 36, objectFit: "contain" }} alt="" /></div>,
+    "רמי לוי":    <div style={{ ...box, background: "#e8001a" }}><span style={{ color: "#fff", fontWeight: 900, fontSize: 11, textAlign: "center", lineHeight: 1.2 }}>רמי{"\n"}לוי</span></div>,
+    "סופר קרפור": <div style={{ ...box, background: "#003da5" }}><span style={{ color: "#fff", fontWeight: 900, fontSize: 10, textAlign: "center", lineHeight: 1.2 }}>קרפור</span></div>,
+    "שופרסל":     <div style={{ ...box, background: "#00873c" }}><span style={{ color: "#fff", fontWeight: 900, fontSize: 10, textAlign: "center" }}>שופרסל</span></div>,
+    "ויקטורי":    <div style={{ ...box, background: "#f97316" }}><span style={{ color: "#fff", fontWeight: 900, fontSize: 10, textAlign: "center" }}>ויקטורי</span></div>,
+    "מגה ספורט":  <div style={{ ...box, background: "#2d7a2d" }}><span style={{ color: "#fff", fontWeight: 900, fontSize: 10, textAlign: "center" }}>מגה{"\n"}ספורט</span></div>,
     "מחסני להב":  <div style={{ ...box, background: "#7c1c1c" }}><span style={{ color: "#fff", fontWeight: 900, fontSize: 11 }}>להב</span></div>,
     "BOOM":       <div style={{ ...box, background: "#ca8a04" }}><span style={{ color: "#fff", fontWeight: 900, fontSize: 14 }}>BOOM</span></div>,
     "חבר":        <div style={{ ...box, background: "#1e40af" }}><span style={{ color: "#fff", fontWeight: 900, fontSize: 16 }}>חבר</span></div>,
@@ -481,6 +481,7 @@ export default function App() {
                 {/* מצלמה — עם capture */}
                 <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
                   onChange={e => { if (e.target.files[0]) scanImage(e.target.files[0]); }} />
+              </div>
               {imgPreview && (
                 <div style={{ marginTop: 10, position: "relative", display: "inline-block" }}>
                   <img src={imgPreview} alt="" style={{ maxWidth: "100%", maxHeight: 180, borderRadius: 10, border: "1px solid rgba(99,179,237,0.3)" }} />
