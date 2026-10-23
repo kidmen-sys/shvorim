@@ -72,13 +72,18 @@ function CouponCard({ c, onArchive, onDelete, onEdit, onMoveUp, onMoveDown, isFi
 
       {/* שורה עליונה */}
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-        <Logo chain={c.chain} />
+        {/* לחיצה על לוגו פותחת תמונה */}
+        <div onClick={() => c.image && setImgOpen(true)} style={{ cursor: c.image ? "pointer" : "default", flexShrink: 0 }}>
+          <Logo chain={c.chain} />
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* שורה 1: שם רשת + סטטוס + הנחה + מי הביא */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 700, fontSize: 15, color: "#e8f0fe" }}>{c.chain}</span>
             <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`, fontWeight: 600 }}>{badge.text}</span>
+            {c.discount && <span style={{ fontSize: 12, color: "#93c5fd" }}>· 💰 {c.discount}</span>}
+            {c.addedBy && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>· 👤 {c.addedBy}</span>}
           </div>
-          {c.discount && <div style={{ fontSize: 13, color: "#93c5fd", marginTop: 2 }}>💰 {c.discount}</div>}
           {c.code && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
               <span style={{ fontFamily: "monospace", fontSize: 13, background: "rgba(255,255,255,0.07)", padding: "2px 8px", borderRadius: 6, color: "#e2e8f0", letterSpacing: 1 }}>{c.code}</span>
@@ -86,7 +91,6 @@ function CouponCard({ c, onArchive, onDelete, onEdit, onMoveUp, onMoveDown, isFi
             </div>
           )}
           {c.expiry && <div style={{ fontSize: 11, color: expired ? "#f87171" : soon ? "#fbbf24" : "rgba(255,255,255,0.4)", marginTop: 3 }}>📅 {c.expiry}</div>}
-          {c.addedBy && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>👤 {c.addedBy}</div>}
           {/* הערות — גדולות וברורות */}
           {c.notes && (
             <div style={{ marginTop: 6, fontSize: 13, color: "#e2e8f0", background: "rgba(99,179,237,0.1)", border: "1px solid rgba(99,179,237,0.2)", borderRadius: 8, padding: "5px 9px", lineHeight: 1.5 }}>
@@ -95,13 +99,6 @@ function CouponCard({ c, onArchive, onDelete, onEdit, onMoveUp, onMoveDown, isFi
           )}
         </div>
       </div>
-
-      {/* תמונה — כפתור קטן בלבד, לחיצה פותחת מוגדל */}
-      {c.image && (
-        <button onClick={() => setImgOpen(true)} style={{ alignSelf: "flex-start", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "4px 10px", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-          📷 הצג שובר
-        </button>
-      )}
 
       {/* כפתורי פעולה */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
