@@ -96,11 +96,11 @@ function CouponCard({ c, onArchive, onDelete, onEdit, onMoveUp, onMoveDown, isFi
         </div>
       </div>
 
-      {/* תמונה */}
+      {/* תמונה — כפתור קטן בלבד, לחיצה פותחת מוגדל */}
       {c.image && (
-        <div onClick={() => setImgOpen(true)} style={{ cursor: "pointer", borderRadius: 10, overflow: "hidden", maxHeight: 140, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.2)" }}>
-          <img src={c.image} alt="" style={{ width: "100%", objectFit: "contain", maxHeight: 140 }} />
-        </div>
+        <button onClick={() => setImgOpen(true)} style={{ alignSelf: "flex-start", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "4px 10px", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+          📷 הצג שובר
+        </button>
       )}
 
       {/* כפתורי פעולה */}
@@ -240,6 +240,7 @@ export default function App() {
   const [saving, setSaving]     = useState(false);
   const [scanning, setScanning] = useState(false);
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
   const editImgRef = useRef(null);
 
   // ── Firebase
@@ -463,22 +464,23 @@ export default function App() {
             <div style={{ marginBottom: 14 }}>
               <label style={lbl}>תמונת שובר (אופציונלי) — גם Ctrl+V עובד</label>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button onClick={() => fileRef.current?.click()} style={{ background: "rgba(99,179,237,0.12)", border: "1px solid rgba(99,179,237,0.3)", borderRadius: 10, padding: "8px 14px", color: "#63b3ed", cursor: "pointer", fontSize: 13 }}>
-                  {scanning ? "⏳ מזהה..." : "📷 בחר תמונה"}
-                </button>
-                {editId && !imgPreview && (
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>תמונה קיימת תישמר אם לא תבחר חדשה</span>
+                {scanning ? (
+                  <button disabled style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "8px 14px", color: "rgba(255,255,255,0.5)", fontSize: 13, cursor: "not-allowed" }}>⏳ מזהה פרטים...</button>
+                ) : (
+                  <>
+                    <button onClick={() => fileRef.current?.click()} style={{ background: "rgba(99,179,237,0.12)", border: "1px solid rgba(99,179,237,0.3)", borderRadius: 10, padding: "8px 14px", color: "#63b3ed", cursor: "pointer", fontSize: 13 }}>🖼️ גלריה</button>
+                    <button onClick={() => cameraRef.current?.click()} style={{ background: "rgba(99,179,237,0.12)", border: "1px solid rgba(99,179,237,0.3)", borderRadius: 10, padding: "8px 14px", color: "#63b3ed", cursor: "pointer", fontSize: 13 }}>📷 מצלמה</button>
+                  </>
                 )}
-                <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+                {editId && !imgPreview && (
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>תמונה קיימת תישמר</span>
+                )}
+                {/* גלריה — ללא capture */}
+                <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
                   onChange={e => { if (e.target.files[0]) scanImage(e.target.files[0]); }} />
-              </div>
-              {/* עריכה — תמונה חדשה */}
-              {editId && (
-                <div style={{ marginTop: 8 }}>
-                  <input ref={editImgRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
-                    onChange={e => { if (e.target.files[0]) scanImage(e.target.files[0]); }} />
-                </div>
-              )}
+                {/* מצלמה — עם capture */}
+                <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+                  onChange={e => { if (e.target.files[0]) scanImage(e.target.files[0]); }} />
               {imgPreview && (
                 <div style={{ marginTop: 10, position: "relative", display: "inline-block" }}>
                   <img src={imgPreview} alt="" style={{ maxWidth: "100%", maxHeight: 180, borderRadius: 10, border: "1px solid rgba(99,179,237,0.3)" }} />
