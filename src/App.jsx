@@ -322,8 +322,8 @@ export default function App() {
   const handleSave = async () => {
     const chainName = (form.chain === "אחר" && form.customChain.trim()) ? form.customChain.trim() : form.chain;
     const codeVal = form.code.trim();
-    if (!chainName || !codeVal) return alert("נא למלא רשת וקוד שובר");
-    if (!editId && active.some(c => c.code === codeVal)) return alert("שובר עם קוד זה כבר קיים!");
+    if (!chainName) return alert("נא לבחור רשת");
+    if (!editId && codeVal && active.some(c => c.code === codeVal)) return alert("שובר עם קוד זה כבר קיים!");
     setSaving(true);
     try {
       if (editId) {
