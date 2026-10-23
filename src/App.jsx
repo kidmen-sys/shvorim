@@ -366,19 +366,22 @@ export default function App() {
     await updateDoc(doc(db, "coupons", a.id), { priority: pb + 1 });
   };
 
-  // sort active by priority
+  // "הכל" — חדש למעלה | רשת ספציפית — ישן למעלה (לפי עדיפות/תאריך)
   const sortedActive = [...active].sort((a, b) => {
-    const pa = a.priority ?? (a.createdAt?.toMillis?.() ?? 0);
-    const pb = b.priority ?? (b.createdAt?.toMillis?.() ?? 0);
-    return pa - pb;
+    const ta = a.createdAt?.toMillis?.() ?? 0;
+    const tb = b.createdAt?.toMillis?.() ?? 0;
+    if (filterChain === "הכל") return tb - ta; // חדש למעלה
+    const pa = a.priority ?? ta;
+    const pb = b.priority ?? tb;
+    return pa - pb; // ישן למעלה
   });
 
   const displayedActive = sortedActive.filter(c => filterChain === "הכל" || c.chain === filterChain);
-  // ארכיון — הכי חדש למעלה
+  // ארכיון — הכל: חדש למעלה | רשת: ישן למעלה
   const sortedArchived = [...archived].sort((a, b) => {
     const ta = a.createdAt?.toMillis?.() ?? 0;
     const tb = b.createdAt?.toMillis?.() ?? 0;
-    return tb - ta;
+    return filterChain === "הכל" ? tb - ta : ta - tb;
   });
   const displayedArchived = sortedArchived.filter(c => filterChain === "הכל" || c.chain === filterChain);
   const displayedList = tab === "active" ? displayedActive : displayedArchived;
